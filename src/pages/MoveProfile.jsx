@@ -7,8 +7,6 @@ import FixitySelector from "@/components/move-profile/FixitySelector";
 import MotionInputs from "@/components/move-profile/MotionInputs";
 import ProfileOutput from "@/components/move-profile/ProfileOutput";
 import ProfileChart from "@/components/move-profile/ProfileChart";
-import SaveProfileDialog from "@/components/move-profile/SaveProfileDialog";
-import LoadProfileDialog from "@/components/move-profile/LoadProfileDialog";
 import CustomSegmentEditor from "@/components/move-profile/CustomSegmentEditor";
 import LegalFooter from "@/components/move-profile/LegalFooter";
 
@@ -104,68 +102,273 @@ export default function MoveProfile() {
 
   const handlePublishToPDF = async () => {
     const { jsPDF } = await import("jspdf");
-    const html2canvas = (await import("html2canvas")).default;
-    const doc = new jsPDF();
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const pageW = 210;
+    const margin = 20;
+    const contentW = pageW - margin * 2;
 
-    // Header
-    doc.setFontSize(18);
+    // ── Header bar ──────────────────────────────────────────────────
+    doc.setFillColor(1, 118, 211);
+    doc.rect(0, 0, pageW, 22, "F");
+    doc.setFontSize(14);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.text("Move Profile Report", margin, 14);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageW - margin, 14, { align: "right" });
+
+    // ── Configuration summary ────────────────────────────────────────
+    let y = 34;
+    doc.setFontSize(11);
     doc.setTextColor(31, 45, 61);
-    doc.text("Move Profile Report", 20, 20);
-
-    doc.setFontSize(10);
-    doc.setTextColor(94, 106, 113);
-    doc.text(`Generated: ${new Date().toLocaleDateString()}`, 20, 28);
-    doc.text(`Profile Type: ${profileType.charAt(0).toUpperCase() + profileType.slice(1)}`, 20, 34);
-    doc.text(`End Fixity: ${fixityType}`, 20, 40);
-    doc.text(`Move Distance: ${moveDistance} ${isImperial ? "in" : "mm"}`, 20, 46);
-    if (threadedLength) doc.text(`Threaded Length: ${threadedLength} ${isImperial ? "in" : "mm"}`, 20, 52);
-
-    // Divider
+    doc.setFont("helvetica", "bold");
+    doc.text("Configuration", margin, y);
+    y += 2;
     doc.setDrawColor(176, 190, 197);
-    doc.line(20, 58, 190, 58);
+    doc.line(margin, y, pageW - margin, y);
+    y += 7;
 
-    // Results
-    doc.setFontSize(13);
-    doc.setTextColor(31, 45, 61);
-    doc.text("Profile Results", 20, 66);
-
-    const rows = [
-      ["Max Speed", results.maxSpeed, "mm/s", results.maxSpeed * 0.0393701, "in/s"],
-      ["Acceleration", results.acceleration, "mm/s²", results.acceleration * 0.0393701, "in/s²"],
-      ["Average Speed", results.avgSpeed, "mm/s", results.avgSpeed * 0.0393701, "in/s"],
-      ["Move Time", results.moveTime, "s", results.moveTime, "s"],
+    const configItems = [
+      ["Profile Type", profileType.charAt(0).toUpperCase() + profileType.slice(1)],
+      ["End Fixity", fixityType],
+      ["Move Distance", `${moveDistance} ${isImperial ? "in" : "mm"}`],
     ];
+    if (threadedLength) configItems.push(["Threaded Length", `${threadedLength} ${isImperial ? "in" : "mm"}`]);
 
     doc.setFontSize(10);
-    let y = 76;
-    rows.forEach(([label, metric, metricUnit, imperial, imperialUnit]) => {
+    configItems.forEach(([label, value]) => {
       doc.setTextColor(94, 106, 113);
-      doc.text(label, 20, y);
+      doc.setFont("helvetica", "normal");
+      doc.text(label, margin, y);
       doc.setTextColor(31, 45, 61);
-      doc.text(`${metric.toFixed(2)} ${metricUnit}`, 100, y);
-      if (metricUnit !== "s") doc.text(`${imperial.toFixed(4)} ${imperialUnit}`, 150, y);
-      y += 10;
+      doc.setFont("helvetica", "bold");
+      doc.text(value, margin + 60, y);
+      y += 7;
     });
 
-    // Charts
-    doc.addPage();
-    doc.setFontSize(13);
+    // ── Results table ────────────────────────────────────────────────
+    y += 4;
+    doc.setFontSize(11);
     doc.setTextColor(31, 45, 61);
-    doc.text("Velocity Charts", 20, 20);
+    doc.setFont("helvetica", "bold");
+    doc.text("Profile Results", margin, y);
+    y += 2;
+    doc.setDrawColor(176, 190, 197);
+    doc.line(margin, y, pageW - margin, y);
+    y += 6;
 
-    const chartContainer = document.querySelector('[data-testid="profile-charts"]');
-    if (chartContainer) {
-      const canvas = await html2canvas(chartContainer, { scale: 2, useCORS: true });
-      const imgData = canvas.toDataURL("image/png");
-      const imgWidth = 170;
-      const imgHeight = (canvas.height / canvas.width) * imgWidth;
-      doc.addImage(imgData, "PNG", 20, 30, imgWidth, imgHeight);
+    // Table header
+    doc.setFillColor(244, 246, 249);
+    doc.rect(margin, y - 5, contentW, 8, "F");
+    doc.setFontSize(9);
+    doc.setTextColor(94, 106, 113);
+    doc.setFont("helvetica", "bold");
+    doc.text("Parameter", margin + 3, y);
+    doc.text("Metric", margin + 70, y);
+    doc.text("Imperial", margin + 120, y);
+    y += 4;
+    doc.setDrawColor(176, 190, 197);
+    doc.line(margin, y, pageW - margin, y);
+    y += 5;
+
+    const tableRows = [
+      ["Max Speed", `${results.maxSpeed.toFixed(2)} mm/s`, `${(results.maxSpeed * 0.0393701).toFixed(4)} in/s`],
+      ["Average Speed", `${results.avgSpeed.toFixed(2)} mm/s`, `${(results.avgSpeed * 0.0393701).toFixed(4)} in/s`],
+      ["Acceleration", `${results.acceleration.toFixed(2)} mm/s²`, `${(results.acceleration * 0.0393701).toFixed(4)} in/s²`],
+      ["Move Time", `${results.moveTime.toFixed(3)} s`, `${results.moveTime.toFixed(3)} s`],
+    ];
+
+    doc.setFont("helvetica", "normal");
+    tableRows.forEach(([label, metric, imperial], i) => {
+      if (i % 2 === 0) {
+        doc.setFillColor(250, 251, 252);
+        doc.rect(margin, y - 4, contentW, 8, "F");
+      }
+      doc.setFontSize(10);
+      doc.setTextColor(31, 45, 61);
+      doc.text(label, margin + 3, y);
+      doc.setTextColor(1, 118, 211);
+      doc.setFont("helvetica", "bold");
+      doc.text(metric, margin + 70, y);
+      doc.setTextColor(94, 106, 113);
+      doc.setFont("helvetica", "normal");
+      doc.text(imperial, margin + 120, y);
+      y += 9;
+    });
+
+    // ── Velocity Charts (new page) — drawn directly to canvas ────────
+    // Build chart data points
+    const buildChartPoints = () => {
+      const pts = [];
+      if (profileType === "custom" && customSegments && customSegments.length >= 2) {
+        const d = parseFloat(moveDistance);
+        let rawDist = 0;
+        for (let i = 1; i < customSegments.length; i++) {
+          const dt = customSegments[i].time - customSegments[i - 1].time;
+          rawDist += ((customSegments[i].velocity + customSegments[i - 1].velocity) / 2) * dt;
+        }
+        const scale = rawDist > 0 && d > 0 ? d / rawDist : 1;
+        let cumDist = 0;
+        customSegments.forEach((s, i) => {
+          if (i > 0) {
+            const dt = customSegments[i].time - customSegments[i - 1].time;
+            cumDist += ((customSegments[i].velocity + customSegments[i - 1].velocity) / 2) * scale * dt;
+          }
+          pts.push({ time: s.time, velocity: s.velocity * scale, distance: cumDist });
+        });
+      } else {
+        const { maxSpeed, acceleration, moveTime } = results;
+        const tAccel = maxSpeed / acceleration;
+        const tCruise = Math.max(0, moveTime - 2 * tAccel);
+        let cumDist = 0;
+        for (let i = 0; i <= 100; i++) {
+          const t = (i / 100) * moveTime;
+          let v = 0;
+          if (profileType === "triangular") {
+            const tPeak = moveTime / 2;
+            v = t <= tPeak ? (maxSpeed / tPeak) * t : maxSpeed - (maxSpeed / (moveTime - tPeak)) * (t - tPeak);
+          } else {
+            if (t <= tAccel) v = acceleration * t;
+            else if (t <= tAccel + tCruise) v = maxSpeed;
+            else v = maxSpeed - acceleration * (t - tAccel - tCruise);
+          }
+          v = Math.max(0, v);
+          if (i > 0) {
+            const prevPt = pts[i - 1];
+            const dt = t - prevPt.time;
+            cumDist += ((v + prevPt.velocity) / 2) * dt;
+          }
+          pts.push({ time: parseFloat(t.toFixed(4)), velocity: parseFloat(v.toFixed(2)), distance: parseFloat(cumDist.toFixed(4)) });
+        }
+      }
+      return pts;
+    };
+
+    const drawChartToCanvas = (pts, xKey, xLabel, yLabel, color) => {
+      const cw = 800, ch = 320;
+      const padL = 70, padR = 20, padT = 20, padB = 50;
+      const canvas = document.createElement("canvas");
+      canvas.width = cw; canvas.height = ch;
+      const ctx = canvas.getContext("2d");
+
+      // Background
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, cw, ch);
+
+      const xs = pts.map(p => p[xKey]);
+      const ys = pts.map(p => p.velocity);
+      const xMin = Math.min(...xs), xMax = Math.max(...xs);
+      const yMin = 0, yMax = Math.max(...ys) * 1.1 || 1;
+
+      const toX = v => padL + ((v - xMin) / (xMax - xMin || 1)) * (cw - padL - padR);
+      const toY = v => ch - padB - ((v - yMin) / (yMax - yMin)) * (ch - padT - padB);
+
+      // Grid lines
+      ctx.strokeStyle = "#e2e8f0";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 5; i++) {
+        const gx = padL + (i / 5) * (cw - padL - padR);
+        const gy = ch - padB - (i / 5) * (ch - padT - padB);
+        ctx.beginPath(); ctx.moveTo(gx, padT); ctx.lineTo(gx, ch - padB); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(padL, gy); ctx.lineTo(cw - padR, gy); ctx.stroke();
+      }
+
+      // Axes
+      ctx.strokeStyle = "#94a3b8";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(padL, padT); ctx.lineTo(padL, ch - padB); ctx.lineTo(cw - padR, ch - padB); ctx.stroke();
+
+      // Axis labels
+      ctx.fillStyle = "#64748b";
+      ctx.font = "13px helvetica";
+      ctx.textAlign = "center";
+      // X ticks
+      for (let i = 0; i <= 5; i++) {
+        const val = xMin + (i / 5) * (xMax - xMin);
+        const px = padL + (i / 5) * (cw - padL - padR);
+        ctx.fillText(val.toFixed(2), px, ch - padB + 18);
+      }
+      // X axis label
+      ctx.font = "bold 14px helvetica";
+      ctx.fillText(xLabel, cw / 2, ch - 8);
+      // Y ticks
+      ctx.textAlign = "right";
+      ctx.font = "13px helvetica";
+      for (let i = 0; i <= 5; i++) {
+        const val = yMin + (i / 5) * (yMax - yMin);
+        const py = ch - padB - (i / 5) * (ch - padT - padB);
+        ctx.fillText(val.toFixed(1), padL - 8, py + 4);
+      }
+      // Y axis label
+      ctx.save();
+      ctx.translate(16, ch / 2);
+      ctx.rotate(-Math.PI / 2);
+      ctx.textAlign = "center";
+      ctx.font = "bold 14px helvetica";
+      ctx.fillText(yLabel, 0, 0);
+      ctx.restore();
+
+      // Fill under curve
+      ctx.beginPath();
+      ctx.moveTo(toX(xs[0]), toY(ys[0]));
+      pts.forEach(p => ctx.lineTo(toX(p[xKey]), toY(p.velocity)));
+      ctx.lineTo(toX(xs[xs.length - 1]), ch - padB);
+      ctx.lineTo(toX(xs[0]), ch - padB);
+      ctx.closePath();
+      ctx.fillStyle = color + "22";
+      ctx.fill();
+
+      // Curve line
+      ctx.beginPath();
+      ctx.moveTo(toX(xs[0]), toY(ys[0]));
+      pts.forEach(p => ctx.lineTo(toX(p[xKey]), toY(p.velocity)));
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.lineJoin = "round";
+      ctx.stroke();
+
+      return canvas.toDataURL("image/png");
+    };
+
+    const chartPts = buildChartPoints();
+    const velUnit2 = isImperial ? "in/s" : "mm/s";
+    const distUnit2 = isImperial ? "in" : "mm";
+
+    const chart1 = drawChartToCanvas(chartPts, "time", `Time (s)`, `Velocity (${velUnit2})`, "#0176D3");
+    const chart2 = drawChartToCanvas(chartPts, "distance", `Distance (${distUnit2})`, `Velocity (${velUnit2})`, "#22c55e");
+
+    doc.addPage();
+    doc.setFillColor(1, 118, 211);
+    doc.rect(0, 0, pageW, 22, "F");
+    doc.setFontSize(14);
+    doc.setTextColor(255, 255, 255);
+    doc.setFont("helvetica", "bold");
+    doc.text("Velocity Charts", margin, 14);
+
+    const chartW = contentW;
+    const chartH = chartW * (320 / 800);
+
+    doc.setFontSize(10);
+    doc.setTextColor(1, 118, 211);
+    doc.setFont("helvetica", "bold");
+    doc.text("Velocity vs Time", margin, 32);
+    doc.addImage(chart1, "PNG", margin, 35, chartW, chartH);
+
+    doc.setTextColor(34, 197, 94);
+    doc.text("Velocity vs Distance", margin, 35 + chartH + 12);
+    doc.addImage(chart2, "PNG", margin, 35 + chartH + 15, chartW, chartH);
+
+    // ── Footer on all pages ──────────────────────────────────────────
+    const pageCount = doc.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFontSize(8);
+      doc.setTextColor(150, 160, 170);
+      doc.setFont("helvetica", "normal");
+      doc.text("© 2026 Helix Linear Technologies — Proprietary & Confidential", margin, 290);
+      doc.text(`Page ${i} of ${pageCount}`, pageW - margin, 290, { align: "right" });
     }
-
-    // Footer
-    doc.setFontSize(8);
-    doc.setTextColor(150, 160, 170);
-    doc.text("© 2026 Move Profile Generator — Industrial Motion Analysis", 20, 285);
 
     doc.save(`move-profile-${profileType}-${new Date().toISOString().slice(0, 10)}.pdf`);
   };
@@ -273,10 +476,6 @@ export default function MoveProfile() {
               </button>
               <span className={`text-[13px] font-semibold transition-colors ${isImperial ? "text-[#0176D3]" : "text-[#5E6A71]"}`}>in</span>
             </div>
-            <SaveProfileDialog
-              currentConfig={{ profileType, fixityType, threadedLength, moveDistance, motionOption, motionValue, isImperial }}
-            />
-
           </div>
         </div>
       </section>
